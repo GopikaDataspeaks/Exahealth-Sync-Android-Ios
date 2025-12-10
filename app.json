@@ -5,22 +5,66 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
+    "scheme": "healthsyncexpo",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
+    "plugins": [
+      "expo-health-connect",
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "compileSdkVersion": 36,
+            "targetSdkVersion": 34,
+            "minSdkVersion": 26,
+            "kotlinVersion": "2.0.21"
+          }
+        }
+      ]
+    ],
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "usesHealthKit": true,
+      "infoPlist": {
+        "NSHealthShareUsageDescription": "HealthSync reads steps, heart rate, calories, sleep, distance, and weight to keep your vitals dashboard up to date.",
+        "NSHealthUpdateUsageDescription": "HealthSync writes steps and body metrics you choose to log from the app."
+      },
+      "bundleIdentifier": "com.gopikaa12.HealthSyncExpo"
     },
     "android": {
+      "permissions": [
+        "android.permission.health.READ_STEPS",
+        "android.permission.health.WRITE_STEPS",
+        "android.permission.health.READ_HEART_RATE",
+        "android.permission.health.READ_SLEEP",
+        "android.permission.health.READ_DISTANCE",
+        "android.permission.health.READ_ACTIVE_CALORIES_BURNED",
+        "android.permission.health.READ_TOTAL_CALORIES_BURNED",
+        "android.permission.health.READ_EXERCISE",
+        "android.permission.health.READ_BODY_WEIGHT",
+        "android.permission.health.WRITE_BODY_WEIGHT",
+        "android.permission.health.READ_STEPS",
+        "android.permission.health.WRITE_STEPS",
+        "android.permission.health.READ_HEART_RATE",
+        "android.permission.health.READ_SLEEP",
+        "android.permission.health.READ_DISTANCE",
+        "android.permission.health.READ_ACTIVE_CALORIES_BURNED",
+        "android.permission.health.READ_TOTAL_CALORIES_BURNED",
+        "android.permission.health.READ_EXERCISE",
+        "android.permission.health.READ_BODY_WEIGHT",
+        "android.permission.health.WRITE_BODY_WEIGHT"
+      ],
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
-      "edgeToEdgeEnabled": true
+      "edgeToEdgeEnabled": true,
+      "package": "com.gopikaa12.HealthSyncExpo"
     },
     "web": {
       "favicon": "./assets/favicon.png"
