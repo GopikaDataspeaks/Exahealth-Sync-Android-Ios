@@ -7,7 +7,7 @@
     "icon": "./assets/icon.png",
     "scheme": "healthsyncexpo",
     "userInterfaceStyle": "light",
-    "newArchEnabled": true,
+    "newArchEnabled": false,
     "plugins": [
       "expo-health-connect",
       [
@@ -20,7 +20,8 @@
             "kotlinVersion": "2.0.21"
           }
         }
-      ]
+      ],
+      "expo-sqlite"
     ],
     "splash": {
       "image": "./assets/splash-icon.png",
@@ -63,7 +64,7 @@
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
-      "edgeToEdgeEnabled": true,
+      "edgeToEdgeEnabled": false,
       "package": "com.gopikaa12.HealthSyncExpo"
     },
     "web": {

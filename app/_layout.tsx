@@ -1,11 +1,17 @@
-import {Stack} from 'expo-router';
+import { Stack } from 'expo-router';
 import React from 'react';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 export default function RootLayout() {
-  return (
-    <Stack screenOptions={{headerShown: false}}>
-      <Stack.Screen name="(tabs)" />
-      <Stack.Screen name="vital/[metric]" options={{headerShown: false}} />
-    </Stack>
-  );
+    return (
+        <SafeAreaProvider>
+            <Stack screenOptions={{
+                headerShown: false,
+                presentation: 'card', // Force card presentation to avoid sheet-related crashes
+            }}>
+                <Stack.Screen name="(tabs)" />
+                <Stack.Screen name="vital/[metric]" />
+            </Stack>
+        </SafeAreaProvider>
+    );
 }

@@ -1,12 +1,13 @@
 import DateTimePicker from '@react-native-community/datetimepicker';
-import {useLocalSearchParams, useRouter} from 'expo-router';
-import React, {useEffect, useMemo, useState} from 'react';
-import {Platform, ScrollView, StatusBar, Text, TouchableOpacity, View} from 'react-native';
-import {SafeAreaView} from 'react-native-safe-area-context';
-import {MaterialCommunityIcons, MaterialIcons} from '@expo/vector-icons';
-import {computeRange, RangeKey, todayKey} from '../../src/health/rangeUtils';
-import {useHealthStore} from '../../src/state/healthStore';
-import {Button, Card} from '../../src/ui/Primitives';
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import React, { useEffect, useMemo, useState } from 'react';
+import { StatusBar } from 'expo-status-bar';
+import { Platform, ScrollView, Text, TouchableOpacity, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { MaterialCommunityIcons, MaterialIcons } from '@expo/vector-icons';
+import { computeRange, RangeKey, todayKey } from '../../src/health/rangeUtils';
+import { useHealthStore } from '../../src/state/healthStore';
+import { Button, Card } from '../../src/ui/Primitives';
 
 type MetricKey =
   | 'steps'
@@ -24,25 +25,25 @@ type MetricKey =
 
 const metricConfig: Record<
   MetricKey,
-  {label: string; icon: keyof typeof MaterialCommunityIcons.glyphMap; suffix?: string}
+  { label: string; icon: keyof typeof MaterialCommunityIcons.glyphMap; suffix?: string }
 > = {
-  steps: {label: 'Steps', icon: 'walk'},
-  calories: {label: 'Calories', icon: 'fire', suffix: 'kcal'},
-  distance: {label: 'Distance', icon: 'map-marker-distance', suffix: 'm'},
-  sleep: {label: 'Sleep', icon: 'sleep', suffix: 'min'},
-  active: {label: 'Active minutes', icon: 'run', suffix: 'min'},
-  heart: {label: 'Heart rate', icon: 'heart-pulse', suffix: 'bpm'},
-  bp: {label: 'Blood pressure', icon: 'heart', suffix: 'mmHg'},
-  glucose: {label: 'Blood glucose', icon: 'water', suffix: 'mg/dL'},
-  temperature: {label: 'Body temp', icon: 'thermometer', suffix: '°C'},
-  oxygen: {label: 'Oxygen saturation', icon: 'heart-plus', suffix: '%'},
-  respiratory: {label: 'Respiratory rate', icon: 'lungs', suffix: 'rpm'},
-  weight: {label: 'Weight', icon: 'weight-kilogram', suffix: 'kg'},
+  steps: { label: 'Steps', icon: 'walk' },
+  calories: { label: 'Calories', icon: 'fire', suffix: 'kcal' },
+  distance: { label: 'Distance', icon: 'map-marker-distance', suffix: 'm' },
+  sleep: { label: 'Sleep', icon: 'sleep', suffix: 'min' },
+  active: { label: 'Active minutes', icon: 'run', suffix: 'min' },
+  heart: { label: 'Heart rate', icon: 'heart-pulse', suffix: 'bpm' },
+  bp: { label: 'Blood pressure', icon: 'heart', suffix: 'mmHg' },
+  glucose: { label: 'Blood glucose', icon: 'water', suffix: 'mg/dL' },
+  temperature: { label: 'Body temp', icon: 'thermometer', suffix: '°C' },
+  oxygen: { label: 'Oxygen saturation', icon: 'heart-plus', suffix: '%' },
+  respiratory: { label: 'Respiratory rate', icon: 'lungs', suffix: 'rpm' },
+  weight: { label: 'Weight', icon: 'weight-kilogram', suffix: 'kg' },
 };
 
 export default function MetricDetailScreen() {
   const router = useRouter();
-  const params = useLocalSearchParams<{metric: MetricKey}>();
+  const params = useLocalSearchParams<{ metric: MetricKey }>();
   const metric = (params.metric as MetricKey) || 'steps';
   const config = metricConfig[metric];
   const daily = useHealthStore(s => s.daily);
@@ -57,7 +58,7 @@ export default function MetricDetailScreen() {
   const [showEndPicker, setShowEndPicker] = useState(false);
 
   useEffect(() => {
-    const {start, end} = computeRange(rangeKey, customStart, customEnd);
+    const { start, end } = computeRange(rangeKey, customStart, customEnd);
     if (rangeKey === 'custom' && (!customStart || !customEnd)) {
       return;
     }
@@ -73,29 +74,29 @@ export default function MetricDetailScreen() {
       daily.map(d => {
         switch (metric) {
           case 'calories':
-            return {label: d.date, value: d.calories ?? 0};
+            return { label: d.date, value: d.calories ?? 0 };
           case 'distance':
-            return {label: d.date, value: (d.distanceKm ?? 0) * 1000};
+            return { label: d.date, value: (d.distanceKm ?? 0) * 1000 };
           case 'sleep':
-            return {label: d.date, value: d.sleepMinutes ?? 0};
+            return { label: d.date, value: d.sleepMinutes ?? 0 };
           case 'active':
-            return {label: d.date, value: d.activeMinutes ?? 0};
+            return { label: d.date, value: d.activeMinutes ?? 0 };
           case 'heart':
-            return {label: d.date, value: d.averageHeartRate ?? 0};
+            return { label: d.date, value: d.averageHeartRate ?? 0 };
           case 'bp':
-            return {label: d.date, value: d.bloodPressureSystolic ?? 0};
+            return { label: d.date, value: d.bloodPressureSystolic ?? 0 };
           case 'glucose':
-            return {label: d.date, value: d.bloodGlucoseMgPerDl ?? 0};
+            return { label: d.date, value: d.bloodGlucoseMgPerDl ?? 0 };
           case 'temperature':
-            return {label: d.date, value: d.bodyTemperatureC ?? 0};
+            return { label: d.date, value: d.bodyTemperatureC ?? 0 };
           case 'oxygen':
-            return {label: d.date, value: d.oxygenSaturationPercent ?? 0};
+            return { label: d.date, value: d.oxygenSaturationPercent ?? 0 };
           case 'respiratory':
-            return {label: d.date, value: d.respiratoryRate ?? 0};
+            return { label: d.date, value: d.respiratoryRate ?? 0 };
           case 'weight':
-            return {label: d.date, value: d.weightKg ?? 0};
+            return { label: d.date, value: d.weightKg ?? 0 };
           default:
-            return {label: d.date, value: d.steps ?? 0};
+            return { label: d.date, value: d.steps ?? 0 };
         }
       }),
     [daily, metric],
@@ -196,41 +197,41 @@ export default function MetricDetailScreen() {
   };
 
   return (
-    <SafeAreaView style={{flex: 1, backgroundColor: '#0f172a'}}>
-      <StatusBar barStyle="light-content" backgroundColor="#0f172a" />
-       <TouchableOpacity 
-        onPress={() => router.back()} 
+    <SafeAreaView style={{ flex: 1, backgroundColor: '#0f172a' }}>
+      <StatusBar style="light" backgroundColor="#0f172a" />
+      <TouchableOpacity
+        onPress={() => router.back()}
         style={{
-          flexDirection: 'row', 
-          alignItems: 'center', 
-          paddingHorizontal: 16, 
+          flexDirection: 'row',
+          alignItems: 'center',
+          paddingHorizontal: 16,
           paddingVertical: 12,
           gap: 8
         }}>
-        <MaterialIcons name='arrow-back' size={24} color='white'/>
-        <Text style={{color: 'white', fontSize: 16}}>Back</Text>
+        <MaterialIcons name='arrow-back' size={24} color='white' />
+        <Text style={{ color: 'white', fontSize: 16 }}>Back</Text>
       </TouchableOpacity>
 
       <ScrollView
-        style={{flex: 1, backgroundColor: '#0b1224'}}
-        contentContainerStyle={{padding: 16, gap: 12}}>
+        style={{ flex: 1, backgroundColor: '#0b1224' }}
+        contentContainerStyle={{ padding: 16, gap: 12 }}>
         <Card title={`${config.label}`}>
-          <View style={{flexDirection: 'row', alignItems: 'center', gap: 10}}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
             <MaterialCommunityIcons name={config.icon} size={26} color="#22c55e" />
-            <Text style={{color: '#e2e8f0', fontSize: 24, fontWeight: '800'}}>
+            <Text style={{ color: '#e2e8f0', fontSize: 24, fontWeight: '800' }}>
               {todayValue}
             </Text>
           </View>
-          <Text style={{color: '#94a3b8'}}>Today</Text>
-          <Text style={{color: '#94a3b8', marginTop: 6}}>Range total: {summaryValue}</Text>
+          <Text style={{ color: '#94a3b8' }}>Today</Text>
+          <Text style={{ color: '#94a3b8', marginTop: 6 }}>Range total: {summaryValue}</Text>
         </Card>
 
         <Card title="Range">
-          <View style={{flexDirection: 'row', gap: 8}}>
+          <View style={{ flexDirection: 'row', gap: 8 }}>
             {[
-              {key: '7d', label: 'This week'},
-              {key: '30d', label: 'This month'},
-              {key: 'custom', label: 'Custom'},
+              { key: '7d', label: 'This week' },
+              { key: '30d', label: 'This month' },
+              { key: 'custom', label: 'Custom' },
             ].map(btn => (
               <TouchableOpacity
                 key={btn.key}
@@ -252,7 +253,7 @@ export default function MetricDetailScreen() {
             ))}
           </View>
           {rangeKey === 'custom' ? (
-            <View style={{marginTop: 10, gap: 10}}>
+            <View style={{ marginTop: 10, gap: 10 }}>
               <DateRow
                 label="Start"
                 value={customStart || 'Select date'}
@@ -286,7 +287,7 @@ export default function MetricDetailScreen() {
                   if (customStart && customEnd) {
                     const start = new Date(customStart).toISOString();
                     const end = new Date(customEnd).toISOString();
-                    syncRange({start, end});
+                    syncRange('custom', start, end);
                   }
                 }}
                 disabled={syncing || !customStart || !customEnd}
@@ -308,7 +309,7 @@ export default function MetricDetailScreen() {
   );
 }
 
-function DateRow({label, value, onPress}: {label: string; value: string; onPress: () => void}) {
+function DateRow({ label, value, onPress }: { label: string; value: string; onPress: () => void }) {
   return (
     <TouchableOpacity
       onPress={onPress}
@@ -321,8 +322,8 @@ function DateRow({label, value, onPress}: {label: string; value: string; onPress
         flexDirection: 'row',
         justifyContent: 'space-between',
       }}>
-      <Text style={{color: '#cbd5e1'}}>{label}</Text>
-      <Text style={{color: '#e2e8f0', fontWeight: '700'}}>{value}</Text>
+      <Text style={{ color: '#cbd5e1' }}>{label}</Text>
+      <Text style={{ color: '#e2e8f0', fontWeight: '700' }}>{value}</Text>
     </TouchableOpacity>
   );
 }
@@ -332,7 +333,7 @@ function ChartSection({
   suffix,
   metricLabel,
 }: {
-  data: {label: string; value: number}[];
+  data: { label: string; value: number }[];
   suffix?: string;
   metricLabel: string;
 }) {
@@ -341,15 +342,15 @@ function ChartSection({
   const barHeight = (value: number) => (max > 0 ? Math.max((value / max) * 120, 4) : 4);
 
   return (
-    <View style={{gap: 12}}>
-      <Text style={{color: '#94a3b8'}}>Trend ({displayData.length} days)</Text>
+    <View style={{ gap: 12 }}>
+      <Text style={{ color: '#94a3b8' }}>Trend ({displayData.length} days)</Text>
       {displayData.length === 0 ? (
-        <Text style={{color: '#cbd5e1'}}>No data in range.</Text>
+        <Text style={{ color: '#cbd5e1' }}>No data in range.</Text>
       ) : (
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
-          contentContainerStyle={{gap: 10, paddingVertical: 6}}>
+          contentContainerStyle={{ gap: 10, paddingVertical: 6 }}>
           {displayData.map(d => {
             const label = formatDateLabel(d.label);
             return (
@@ -368,10 +369,10 @@ function ChartSection({
                     borderRadius: 6,
                   }}
                 />
-                <Text style={{color: '#94a3b8', fontSize: 10, marginTop: 4}} numberOfLines={1}>
+                <Text style={{ color: '#94a3b8', fontSize: 10, marginTop: 4 }} numberOfLines={1}>
                   {label}
                 </Text>
-                <Text style={{color: '#cbd5e1', fontSize: 10}}>
+                <Text style={{ color: '#cbd5e1', fontSize: 10 }}>
                   {d.value.toFixed(0)}
                   {suffix ? '' : ''}
                 </Text>
@@ -389,5 +390,5 @@ function formatDateLabel(dateStr: string) {
   if (isNaN(d.getTime())) {
     return dateStr;
   }
-  return d.toLocaleDateString(undefined, {month: 'short', day: 'numeric'});
+  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 }

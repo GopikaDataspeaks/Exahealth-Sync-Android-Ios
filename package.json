@@ -9,13 +9,14 @@
     "web": "expo start --web"
   },
   "dependencies": {
-    "@react-native-async-storage/async-storage": "^1.23.1",
     "@react-native-async-storage/async-storage": "^2.2.0",
     "@react-native-community/datetimepicker": "^8.5.1",
     "expo": "~54.0.25",
     "expo-build-properties": "^1.0.10",
+    "expo-file-system": "~19.0.21",
     "expo-health-connect": "^0.1.1",
     "expo-router": "^6.0.17",
+    "expo-sqlite": "~16.0.10",
     "expo-status-bar": "~3.0.9",
     "react": "19.1.0",
     "react-dom": "19.1.0",

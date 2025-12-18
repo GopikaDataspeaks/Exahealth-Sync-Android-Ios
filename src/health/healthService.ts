@@ -1,4 +1,4 @@
-import {Platform} from 'react-native';
+import { Platform } from 'react-native';
 import AppleHealthKit, {
   HealthKitPermissions,
   HealthValue,
@@ -55,6 +55,10 @@ export type DailyMetrics = {
   weightKg?: number;
   bloodPressureSystolic?: number;
   bloodPressureDiastolic?: number;
+  bloodGlucoseMgPerDl?: number;
+  bodyTemperatureC?: number;
+  oxygenSaturationPercent?: number;
+  respiratoryRate?: number;
 };
 
 export type VitalsRangeResult = {
@@ -66,32 +70,32 @@ export type VitalsRangeResult = {
 const DAY_RANGE_HOURS = 24;
 
 const healthConnectPermissions: HealthConnectPermission[] = [
-  {accessType: 'read', recordType: 'Steps'},
-  {accessType: 'write', recordType: 'Steps'},
-  {accessType: 'read', recordType: 'HeartRate'},
-  {accessType: 'read', recordType: 'SleepSession'},
-  {accessType: 'read', recordType: 'Distance'},
-  {accessType: 'read', recordType: 'ActiveCaloriesBurned'},
-  {accessType: 'read', recordType: 'TotalCaloriesBurned'},
-  {accessType: 'read', recordType: 'ExerciseSession'},
-  {accessType: 'read', recordType: 'Weight'},
-  {accessType: 'write', recordType: 'Weight'},
-  {accessType: 'read', recordType: 'BloodPressure'},
-  {accessType: 'read', recordType: 'BloodGlucose'},
-  {accessType: 'read', recordType: 'BodyTemperature'},
-  {accessType: 'read', recordType: 'OxygenSaturation'},
-  {accessType: 'read', recordType: 'RespiratoryRate'},
+  { accessType: 'read', recordType: 'Steps' },
+  { accessType: 'write', recordType: 'Steps' },
+  { accessType: 'read', recordType: 'HeartRate' },
+  { accessType: 'read', recordType: 'SleepSession' },
+  { accessType: 'read', recordType: 'Distance' },
+  { accessType: 'read', recordType: 'ActiveCaloriesBurned' },
+  { accessType: 'read', recordType: 'TotalCaloriesBurned' },
+  { accessType: 'read', recordType: 'ExerciseSession' },
+  { accessType: 'read', recordType: 'Weight' },
+  { accessType: 'write', recordType: 'Weight' },
+  { accessType: 'read', recordType: 'BloodPressure' },
+  { accessType: 'read', recordType: 'BloodGlucose' },
+  { accessType: 'read', recordType: 'BodyTemperature' },
+  { accessType: 'read', recordType: 'OxygenSaturation' },
+  { accessType: 'read', recordType: 'RespiratoryRate' },
 ];
 
 // Reads we need to collect metrics; write permissions are optional.
 const requiredHealthConnectReads: HealthConnectPermission[] = [
-  {accessType: 'read', recordType: 'Steps'},
-  {accessType: 'read', recordType: 'HeartRate'},
-  {accessType: 'read', recordType: 'SleepSession'},
-  {accessType: 'read', recordType: 'Distance'},
-  {accessType: 'read', recordType: 'TotalCaloriesBurned'},
-  {accessType: 'read', recordType: 'ExerciseSession'},
-  {accessType: 'read', recordType: 'ActiveCaloriesBurned'},
+  { accessType: 'read', recordType: 'Steps' },
+  { accessType: 'read', recordType: 'HeartRate' },
+  { accessType: 'read', recordType: 'SleepSession' },
+  { accessType: 'read', recordType: 'Distance' },
+  { accessType: 'read', recordType: 'TotalCaloriesBurned' },
+  { accessType: 'read', recordType: 'ExerciseSession' },
+  { accessType: 'read', recordType: 'ActiveCaloriesBurned' },
 ];
 
 function permissionKey(permission: HealthConnectPermission) {
@@ -163,6 +167,12 @@ const appleHealthPermissions: HealthKitPermissions = {
       AppleHealthKit.Constants.Permissions.ActiveEnergyBurned,
       AppleHealthKit.Constants.Permissions.Weight,
       AppleHealthKit.Constants.Permissions.AppleExerciseTime,
+      AppleHealthKit.Constants.Permissions.BloodPressureSystolic,
+      AppleHealthKit.Constants.Permissions.BloodPressureDiastolic,
+      AppleHealthKit.Constants.Permissions.BloodGlucose,
+      AppleHealthKit.Constants.Permissions.BodyTemperature,
+      AppleHealthKit.Constants.Permissions.OxygenSaturation,
+      AppleHealthKit.Constants.Permissions.RespiratoryRate,
     ],
     write: [
       AppleHealthKit.Constants.Permissions.Steps,
@@ -183,39 +193,54 @@ const timeRange = () => {
 };
 
 export async function requestPlatformPermissions(): Promise<PermissionResult> {
-  console.log('[health] requestPlatformPermissions start', {platform: Platform.OS});
+  console.log('[health] requestPlatformPermissions start', { platform: Platform.OS });
   if (Platform.OS === 'android') {
     return ensureHealthConnectPermissions();
   }
 
   return new Promise(resolve => {
     console.log('[health] HealthKit init start');
-    AppleHealthKit.initHealthKit(appleHealthPermissions, error => {
-      if (error) {
-        console.log('[health] HealthKit init error', error);
-        resolve({
-          granted: false,
-          platform: 'ios',
-          details: [error],
-        });
-        return;
-      }
-
-      console.log('[health] HealthKit init success');
+    if (!AppleHealthKit || !AppleHealthKit.initHealthKit) {
+      console.log('[health] AppleHealthKit native module not found');
       resolve({
-        granted: true,
+        granted: false,
         platform: 'ios',
-        details: [
-          'HealthKit enabled',
-          'Permissions granted for steps, heart rate, distance, calories, exercise time, weight, and sleep',
-        ],
+        details: ['Native module not available'],
       });
-    });
+      return;
+    }
+
+    try {
+      AppleHealthKit.initHealthKit(appleHealthPermissions, error => {
+        if (error) {
+          console.log('[health] HealthKit init error', error);
+          resolve({
+            granted: false,
+            platform: 'ios',
+            details: [String(error)],
+          });
+          return;
+        }
+        console.log('[health] HealthKit init success');
+        resolve({
+          granted: true,
+          platform: 'ios',
+          details: ['Permissions granted or already authorized'],
+        });
+      });
+    } catch (e) {
+      console.log('[health] HealthKit fatal init error', e);
+      resolve({
+        granted: false,
+        platform: 'ios',
+        details: [String(e)],
+      });
+    }
   });
 }
 
 export async function syncVitals(): Promise<VitalMetrics> {
-  console.log('[health] syncVitals start', {platform: Platform.OS});
+  console.log('[health] syncVitals start', { platform: Platform.OS });
   if (Platform.OS === 'android') {
     return syncHealthConnect();
   }
@@ -247,8 +272,8 @@ async function syncHealthConnect(): Promise<VitalMetrics> {
     p => p.recordType === 'Weight' && p.accessType === 'read',
   );
 
-  const {start, end} = timeRange();
-  const timeRangeFilter = {startTime: start, endTime: end, operator: 'between' as const};
+  const { start, end } = timeRange();
+  const timeRangeFilter = { startTime: start, endTime: end, operator: 'between' as const };
   console.log('[health] Health Connect aggregate start', timeRangeFilter);
 
   const [steps, heart, calories, distance, sleep, active] = await Promise.all([
@@ -261,13 +286,13 @@ async function syncHealthConnect(): Promise<VitalMetrics> {
   ]);
   const bpRecords = await safeReadRecords('BloodPressure', timeRangeFilter);
   const [glucoseAvg, tempAvg, oxyAvg, respAvg] = await Promise.all([
-    averageInstantRecord('BloodGlucose', timeRangeFilter, record => record.level.value),
-    averageInstantRecord('BodyTemperature', timeRangeFilter, record => record.temperature.value),
-    averageInstantRecord('OxygenSaturation', timeRangeFilter, record => record.percentage),
-    averageInstantRecord('RespiratoryRate', timeRangeFilter, record => record.rate),
+    averageInstantRecord('BloodGlucose' as any, timeRangeFilter, record => record.level.value),
+    averageInstantRecord('BodyTemperature' as any, timeRangeFilter, record => record.temperature.value),
+    averageInstantRecord('OxygenSaturation' as any, timeRangeFilter, record => record.percentage),
+    averageInstantRecord('RespiratoryRate' as any, timeRangeFilter, record => record.rate),
   ]);
   const weight = hasWeightAccess
-    ? await safeAggregateRecord('Weight', timeRangeFilter)
+    ? await safeAggregateRecord('Weight' as any, timeRangeFilter)
     : undefined;
 
   console.log('[health] Health Connect aggregate results', {
@@ -278,24 +303,18 @@ async function syncHealthConnect(): Promise<VitalMetrics> {
     sleep,
     active,
     weight,
-    bloodPressure,
+    bpRecords,
   });
 
   return {
     platform: 'android',
-    steps: steps?.COUNT_TOTAL ?? 0,
-    averageHeartRate: heart?.BPM_AVG ?? 0,
-    calories: calories?.ENERGY_TOTAL?.inKilocalories ?? 0,
-    distanceKm: distance?.DISTANCE?.inKilometers ?? 0,
-    sleepMinutes:
-      sleep?.SLEEP_DURATION_TOTAL != null
-        ? Math.round(sleep.SLEEP_DURATION_TOTAL / 60)
-        : 0,
-    activeMinutes:
-      active?.EXERCISE_DURATION_TOTAL?.inSeconds != null
-        ? Math.round(active.EXERCISE_DURATION_TOTAL.inSeconds / 60)
-        : 0,
-    weightKg: weight?.WEIGHT_AVG?.inKilograms ?? 0,
+    steps: (steps as any)?.count ?? (steps as any)?.COUNT_TOTAL ?? 0,
+    averageHeartRate: (heart as any)?.avg ?? (heart as any)?.BPM_AVG ?? 0,
+    calories: (calories as any)?.energy?.inKilocalories ?? (calories as any)?.ENERGY_TOTAL?.inKilocalories ?? 0,
+    distanceKm: (distance as any)?.distance?.inKilometers ?? (distance as any)?.DISTANCE?.inKilometers ?? 0,
+    sleepMinutes: (sleep as any)?.duration?.inMinutes ?? ((sleep as any)?.SLEEP_DURATION_TOTAL ? Math.round((sleep as any).SLEEP_DURATION_TOTAL / 60) : 0),
+    activeMinutes: (active as any)?.duration?.inMinutes ?? ((active as any)?.EXERCISE_DURATION_TOTAL?.inSeconds ? Math.round((active as any).EXERCISE_DURATION_TOTAL.inSeconds / 60) : 0),
+    weightKg: (weight as any)?.weight?.inKilograms ?? (weight as any)?.WEIGHT_AVG?.inKilograms ?? 0,
     bloodPressureSystolic: averageBP(bpRecords, 'systolic') ?? 0,
     bloodPressureDiastolic: averageBP(bpRecords, 'diastolic') ?? 0,
     bloodGlucoseMgPerDl: glucoseAvg ?? 0,
@@ -321,8 +340,8 @@ async function syncHealthConnectRange(
     p => p.recordType === 'Weight' && p.accessType === 'read',
   );
 
-  const timeRangeFilter = {startTime: start, endTime: end, operator: 'between' as const};
-  const timeRangeSlicer = {duration: 'DAYS' as const, length: 1};
+  const timeRangeFilter = { startTime: start, endTime: end, operator: 'between' as const };
+  const timeRangeSlicer = { duration: 'DAYS' as const, length: 1 };
   console.log('[health] Health Connect range aggregate', timeRangeFilter);
 
   const [steps, heart, calories, distance, sleep, active] = await Promise.all([
@@ -388,31 +407,31 @@ async function syncHealthConnectRange(
 
   stepsByDay.forEach(bucket => {
     const key = getKey(bucket.startTime);
-    dailyMap[key] = dailyMap[key] || {date: key};
+    dailyMap[key] = dailyMap[key] || { date: key };
     dailyMap[key].steps = bucket.result.COUNT_TOTAL ?? 0;
   });
 
   heartByDay.forEach(bucket => {
     const key = getKey(bucket.startTime);
-    dailyMap[key] = dailyMap[key] || {date: key};
+    dailyMap[key] = dailyMap[key] || { date: key };
     dailyMap[key].averageHeartRate = bucket.result.BPM_AVG ?? 0;
   });
 
   caloriesByDay.forEach(bucket => {
     const key = getKey(bucket.startTime);
-    dailyMap[key] = dailyMap[key] || {date: key};
+    dailyMap[key] = dailyMap[key] || { date: key };
     dailyMap[key].calories = bucket.result.ENERGY_TOTAL?.inKilocalories ?? 0;
   });
 
   distanceByDay.forEach(bucket => {
     const key = getKey(bucket.startTime);
-    dailyMap[key] = dailyMap[key] || {date: key};
+    dailyMap[key] = dailyMap[key] || { date: key };
     dailyMap[key].distanceKm = bucket.result.DISTANCE?.inKilometers ?? 0;
   });
 
   sleepByDay.forEach(bucket => {
     const key = getKey(bucket.startTime);
-    dailyMap[key] = dailyMap[key] || {date: key};
+    dailyMap[key] = dailyMap[key] || { date: key };
     dailyMap[key].sleepMinutes =
       bucket.result.SLEEP_DURATION_TOTAL != null
         ? Math.round(bucket.result.SLEEP_DURATION_TOTAL / 60)
@@ -421,7 +440,7 @@ async function syncHealthConnectRange(
 
   activeByDay.forEach(bucket => {
     const key = getKey(bucket.startTime);
-    dailyMap[key] = dailyMap[key] || {date: key};
+    dailyMap[key] = dailyMap[key] || { date: key };
     dailyMap[key].activeMinutes =
       bucket.result.EXERCISE_DURATION_TOTAL?.inSeconds != null
         ? Math.round(bucket.result.EXERCISE_DURATION_TOTAL.inSeconds / 60)
@@ -435,7 +454,7 @@ async function syncHealthConnectRange(
   bucketInstantRecords(respRecords, dailyMap, rec => rec.rate, 'respiratoryRate');
   weightByDay.forEach(bucket => {
     const key = getKey(bucket.startTime);
-    dailyMap[key] = dailyMap[key] || {date: key};
+    dailyMap[key] = dailyMap[key] || { date: key };
     dailyMap[key].weightKg = bucket.result.WEIGHT_AVG?.inKilograms ?? dailyMap[key].weightKg;
   });
 
@@ -464,22 +483,22 @@ async function syncHealthConnectRange(
     respiratoryRate: averageFromDaily(daily, 'respiratoryRate') ?? 0,
   };
 
-  return {platform: 'android', summary, daily};
+  return { platform: 'android', summary, daily };
 }
 
 async function syncAppleHealth(): Promise<VitalMetrics> {
-  const {start, end} = timeRange();
-  console.log('[health] HealthKit aggregate start', {start, end});
+  const { start, end } = timeRange();
+  console.log('[health] HealthKit aggregate start', { start, end });
 
   const steps = await promisifyHealthArray(cb =>
     AppleHealthKit.getDailyStepCountSamples(
-      {startDate: start, endDate: end},
+      { startDate: start, endDate: end },
       cb,
     ),
   );
 
   const heartRates = await promisifyHealthArray(cb =>
-    AppleHealthKit.getHeartRateSamples({startDate: start, endDate: end}, cb),
+    AppleHealthKit.getHeartRateSamples({ startDate: start, endDate: end }, cb),
   );
 
   const calories = await promisifyHealthArray(cb =>
@@ -505,7 +524,7 @@ async function syncAppleHealth(): Promise<VitalMetrics> {
   );
 
   const sleeps = await promisifyHealthArray(cb =>
-    AppleHealthKit.getSleepSamples({startDate: start, endDate: end}, cb),
+    AppleHealthKit.getSleepSamples({ startDate: start, endDate: end }, cb),
   );
 
   const exerciseTimes = await promisifyHealthArray(cb =>
@@ -521,20 +540,53 @@ async function syncAppleHealth(): Promise<VitalMetrics> {
 
   const weight = await promisifyHealthValue(cb =>
     AppleHealthKit.getLatestWeight(
-      {unit: AppleHealthKit.Constants.Units.kilogram},
+      { unit: 'pound' as any }, // HealthKit returns weight in pounds by default
       cb,
     ),
+  );
+
+  // Fetch additional vitals
+  const bloodPressureSamples: any[] = await new Promise(resolve => {
+    AppleHealthKit.getBloodPressureSamples({ startDate: start, endDate: end }, (err: string, results: any) => {
+      if (err) {
+        resolve([]);
+        return;
+      }
+      resolve(results || []);
+    });
+  });
+
+  const bloodGlucoseSamples = await promisifyHealthArray(cb =>
+    AppleHealthKit.getBloodGlucoseSamples(
+      { startDate: start, endDate: end, unit: 'mgPerdL' as any },
+      cb,
+    ),
+  );
+
+  const bodyTempSamples = await promisifyHealthArray(cb =>
+    AppleHealthKit.getBodyTemperatureSamples(
+      { startDate: start, endDate: end, unit: 'celsius' as any },
+      cb,
+    ),
+  );
+
+  const oxygenSaturationSamples = await promisifyHealthArray(cb =>
+    AppleHealthKit.getOxygenSaturationSamples({ startDate: start, endDate: end }, cb),
+  );
+
+  const respiratoryRateSamples = await promisifyHealthArray(cb =>
+    AppleHealthKit.getRespiratoryRateSamples({ startDate: start, endDate: end }, cb),
   );
 
   const totalSteps = steps.reduce((acc, item) => acc + (item.value ?? 0), 0);
 
   const avgHeartRate =
     heartRates.length === 0
-      ? 0
+      ? undefined
       : Math.round(
-          heartRates.reduce((acc, item) => acc + (item.value ?? 0), 0) /
-            heartRates.length,
-        );
+        heartRates.reduce((acc, item) => acc + (item.value ?? 0), 0) /
+        heartRates.length,
+      );
 
   const totalCalories = calories.reduce(
     (acc, item) => acc + (item.value ?? 0),
@@ -557,6 +609,34 @@ async function syncAppleHealth(): Promise<VitalMetrics> {
     0,
   );
 
+  // Calculate averages for additional vitals
+  const avgBPSystolic = bloodPressureSamples.length > 0
+    ? bloodPressureSamples.reduce((acc: number, item: any) => acc + (item.bloodPressureSystolicValue ?? 0), 0) / bloodPressureSamples.length
+    : undefined;
+
+  const avgBPDiastolic = bloodPressureSamples.length > 0
+    ? bloodPressureSamples.reduce((acc: number, item: any) => acc + (item.bloodPressureDiastolicValue ?? 0), 0) / bloodPressureSamples.length
+    : undefined;
+
+  const avgBloodGlucose = bloodGlucoseSamples.length > 0
+    ? bloodGlucoseSamples.reduce((acc, item) => acc + (item.value ?? 0), 0) / bloodGlucoseSamples.length
+    : undefined;
+
+  const avgBodyTemp = bodyTempSamples.length > 0
+    ? bodyTempSamples.reduce((acc, item) => acc + (item.value ?? 0), 0) / bodyTempSamples.length
+    : undefined;
+
+  const avgOxygenSaturation = oxygenSaturationSamples.length > 0
+    ? oxygenSaturationSamples.reduce((acc, item) => acc + (item.value ?? 0), 0) / oxygenSaturationSamples.length
+    : undefined;
+
+  const avgRespiratoryRate = respiratoryRateSamples.length > 0
+    ? respiratoryRateSamples.reduce((acc, item) => acc + (item.value ?? 0), 0) / respiratoryRateSamples.length
+    : undefined;
+
+  // Convert weight from pounds to kg (1 pound = 0.453592 kg)
+  const weightInKg = weight?.value ? weight.value * 0.453592 : undefined;
+
   return {
     platform: 'ios',
     steps: totalSteps,
@@ -565,7 +645,13 @@ async function syncAppleHealth(): Promise<VitalMetrics> {
     distanceKm: totalDistance / 1000,
     sleepMinutes: totalSleepMinutes,
     activeMinutes: totalActiveMinutes,
-    weightKg: weight?.value,
+    weightKg: weightInKg,
+    bloodPressureSystolic: avgBPSystolic,
+    bloodPressureDiastolic: avgBPDiastolic,
+    bloodGlucoseMgPerDl: avgBloodGlucose,
+    bodyTemperatureC: avgBodyTemp,
+    oxygenSaturationPercent: avgOxygenSaturation,
+    respiratoryRate: avgRespiratoryRate,
   };
 }
 
@@ -573,17 +659,17 @@ async function syncAppleHealthRange(
   start: string,
   end: string,
 ): Promise<VitalsRangeResult> {
-  console.log('[health] HealthKit range aggregate start', {start, end});
+  console.log('[health] HealthKit range aggregate start', { start, end });
 
   const steps = await promisifyHealthArray(cb =>
     AppleHealthKit.getDailyStepCountSamples(
-      {startDate: start, endDate: end},
+      { startDate: start, endDate: end },
       cb,
     ),
   );
 
   const heartRates = await promisifyHealthArray(cb =>
-    AppleHealthKit.getHeartRateSamples({startDate: start, endDate: end}, cb),
+    AppleHealthKit.getHeartRateSamples({ startDate: start, endDate: end }, cb),
   );
 
   const calories = await promisifyHealthArray(cb =>
@@ -609,7 +695,7 @@ async function syncAppleHealthRange(
   );
 
   const sleeps = await promisifyHealthArray(cb =>
-    AppleHealthKit.getSleepSamples({startDate: start, endDate: end}, cb),
+    AppleHealthKit.getSleepSamples({ startDate: start, endDate: end }, cb),
   );
 
   const exerciseTimes = await promisifyHealthArray(cb =>
@@ -625,13 +711,46 @@ async function syncAppleHealthRange(
 
   const weight = await promisifyHealthValue(cb =>
     AppleHealthKit.getLatestWeight(
-      {unit: AppleHealthKit.Constants.Units.kilogram},
+      { unit: 'pound' as any },
       cb,
     ),
   );
 
+  // Fetch additional vitals for the range
+  const bloodPressureSamples: any[] = await new Promise(resolve => {
+    AppleHealthKit.getBloodPressureSamples({ startDate: start, endDate: end }, (err: string, results: any) => {
+      if (err) {
+        resolve([]);
+        return;
+      }
+      resolve(results || []);
+    });
+  });
+
+  const bloodGlucoseSamples = await promisifyHealthArray(cb =>
+    AppleHealthKit.getBloodGlucoseSamples(
+      { startDate: start, endDate: end, unit: 'mgPerdL' as any },
+      cb,
+    ),
+  );
+
+  const bodyTempSamples = await promisifyHealthArray(cb =>
+    AppleHealthKit.getBodyTemperatureSamples(
+      { startDate: start, endDate: end, unit: 'celsius' as any },
+      cb,
+    ),
+  );
+
+  const oxygenSaturationSamples = await promisifyHealthArray(cb =>
+    AppleHealthKit.getOxygenSaturationSamples({ startDate: start, endDate: end }, cb),
+  );
+
+  const respiratoryRateSamples = await promisifyHealthArray(cb =>
+    AppleHealthKit.getRespiratoryRateSamples({ startDate: start, endDate: end }, cb),
+  );
+
   const dailyMap: Record<string, DailyMetrics> = {};
-  const add = (key: string) => (dailyMap[key] = dailyMap[key] || {date: key});
+  const add = (key: string) => (dailyMap[key] = dailyMap[key] || { date: key });
   const dateKey = (iso: string) => iso.slice(0, 10);
 
   steps.forEach(s => {
@@ -643,9 +762,12 @@ async function syncAppleHealthRange(
   heartRates.forEach(hr => {
     const key = dateKey(hr.startDate);
     const entry = add(key);
-    entry.averageHeartRate =
-      ((entry.averageHeartRate ?? 0) * (entry as any).count ?? 0) + (hr.value ?? 0);
-    (entry as any).count = ((entry as any).count ?? 0) + 1;
+    if (!entry.averageHeartRate) {
+      entry.averageHeartRate = 0;
+      (entry as any).hrCount = 0;
+    }
+    entry.averageHeartRate = entry.averageHeartRate + (hr.value ?? 0);
+    (entry as any).hrCount = ((entry as any).hrCount ?? 0) + 1;
   });
 
   calories.forEach(c => {
@@ -675,18 +797,57 @@ async function syncAppleHealthRange(
     entry.activeMinutes = (entry.activeMinutes ?? 0) + (e.value ?? 0);
   });
 
+  // Process blood pressure samples
+  bloodPressureSamples.forEach((bp: any) => {
+    const key = dateKey(bp.startDate);
+    const entry = add(key);
+    entry.bloodPressureSystolic = bp.bloodPressureSystolicValue;
+    entry.bloodPressureDiastolic = bp.bloodPressureDiastolicValue;
+  });
+
+  // Process blood glucose samples
+  bloodGlucoseSamples.forEach(bg => {
+    const key = dateKey(bg.startDate);
+    const entry = add(key);
+    entry.bloodGlucoseMgPerDl = bg.value;
+  });
+
+  // Process body temperature samples
+  bodyTempSamples.forEach(temp => {
+    const key = dateKey(temp.startDate);
+    const entry = add(key);
+    entry.bodyTemperatureC = temp.value;
+  });
+
+  // Process oxygen saturation samples
+  oxygenSaturationSamples.forEach(oxy => {
+    const key = dateKey(oxy.startDate);
+    const entry = add(key);
+    entry.oxygenSaturationPercent = oxy.value;
+  });
+
+  // Process respiratory rate samples
+  respiratoryRateSamples.forEach(resp => {
+    const key = dateKey(resp.startDate);
+    const entry = add(key);
+    entry.respiratoryRate = resp.value;
+  });
+
   // finalize heart rate averages
   Object.values(dailyMap).forEach(entry => {
-    const count = (entry as any).count ?? 0;
-    if (count > 0 && entry.averageHeartRate != null) {
-      entry.averageHeartRate = Math.round(entry.averageHeartRate / count);
+    const hrCount = (entry as any).hrCount ?? 0;
+    if (hrCount > 0 && entry.averageHeartRate != null) {
+      entry.averageHeartRate = Math.round(entry.averageHeartRate / hrCount);
     }
-    delete (entry as any).count;
+    delete (entry as any).hrCount;
   });
 
   const daily = Object.values(dailyMap).sort((a, b) =>
     a.date.localeCompare(b.date),
   );
+
+  // Convert weight from pounds to kg
+  const weightInKg = weight?.value ? weight.value * 0.453592 : undefined;
 
   const summary = daily.reduce<VitalMetrics>(
     (acc, entry) => ({
@@ -697,12 +858,18 @@ async function syncAppleHealthRange(
       distanceKm: (acc.distanceKm ?? 0) + (entry.distanceKm ?? 0),
       sleepMinutes: (acc.sleepMinutes ?? 0) + (entry.sleepMinutes ?? 0),
       activeMinutes: (acc.activeMinutes ?? 0) + (entry.activeMinutes ?? 0),
-      weightKg: acc.weightKg ?? entry.weightKg ?? weight?.value,
+      weightKg: acc.weightKg ?? entry.weightKg ?? weightInKg,
+      bloodPressureSystolic: acc.bloodPressureSystolic ?? entry.bloodPressureSystolic,
+      bloodPressureDiastolic: acc.bloodPressureDiastolic ?? entry.bloodPressureDiastolic,
+      bloodGlucoseMgPerDl: acc.bloodGlucoseMgPerDl ?? entry.bloodGlucoseMgPerDl,
+      bodyTemperatureC: acc.bodyTemperatureC ?? entry.bodyTemperatureC,
+      oxygenSaturationPercent: acc.oxygenSaturationPercent ?? entry.oxygenSaturationPercent,
+      respiratoryRate: acc.respiratoryRate ?? entry.respiratoryRate,
     }),
-    {platform: 'ios'},
+    { platform: 'ios' },
   );
 
-  return {platform: 'ios', summary, daily};
+  return { platform: 'ios', summary, daily };
 }
 
 async function safeAggregateRecord<T extends AggregateResultRecordType>(
@@ -710,9 +877,9 @@ async function safeAggregateRecord<T extends AggregateResultRecordType>(
   timeRangeFilter: TimeRangeFilter,
 ) {
   try {
-    return await aggregateRecord({recordType, timeRangeFilter});
+    return await aggregateRecord({ recordType, timeRangeFilter });
   } catch (err) {
-    console.log('[health] aggregateRecord error', {recordType, err});
+    console.log('[health] aggregateRecord error', { recordType, err });
     return undefined;
   }
 }
@@ -721,13 +888,13 @@ async function safeAggregateGroupByDuration<T extends AggregateResultRecordType>
   request: {
     recordType: T;
     timeRangeFilter: TimeRangeFilter;
-    timeRangeSlicer: {duration: 'DAYS'; length: number};
+    timeRangeSlicer: { duration: 'DAYS'; length: number };
   },
 ): Promise<AggregationGroupResult<T>[]> {
   try {
     return await aggregateGroupByDuration(request);
   } catch (err) {
-    console.log('[health] aggregateGroupByDuration error', {recordType: request.recordType, err});
+    console.log('[health] aggregateGroupByDuration error', { recordType: request.recordType, err });
     return [];
   }
 }
@@ -739,15 +906,15 @@ async function safeReadRecords<
   timeRangeFilter: TimeRangeFilter,
 ) {
   try {
-    const res = await readRecords(recordType as any, {timeRangeFilter});
+    const res = await readRecords(recordType as any, { timeRangeFilter });
     return res.records as any[];
   } catch (err) {
-    console.log('[health] readRecords error', {recordType, err});
+    console.log('[health] readRecords error', { recordType, err });
     return [];
   }
 }
 
-function bucketInstantRecords<T extends {startTime?: string; time?: string}>(
+function bucketInstantRecords<T extends { startTime?: string; time?: string }>(
   records: T[],
   dailyMap: Record<string, DailyMetrics>,
   getValue: (r: T) => number | undefined,
@@ -757,14 +924,14 @@ function bucketInstantRecords<T extends {startTime?: string; time?: string}>(
     | 'oxygenSaturationPercent'
     | 'respiratoryRate',
 ) {
-  const sums: Record<string, {sum: number; count: number}> = {};
+  const sums: Record<string, { sum: number; count: number }> = {};
   records.forEach(rec => {
     const ts = rec.startTime || (rec as any).time;
     if (!ts) return;
     const key = ts.slice(0, 10);
     const value = getValue(rec);
     if (value == null) return;
-    sums[key] = sums[key] || {sum: 0, count: 0};
+    sums[key] = sums[key] || { sum: 0, count: 0 };
     sums[key].sum += value;
     sums[key].count += 1;
   });
@@ -772,7 +939,7 @@ function bucketInstantRecords<T extends {startTime?: string; time?: string}>(
   Object.entries(sums).forEach(([key, agg]) => {
     const avg = agg.count > 0 ? agg.sum / agg.count : undefined;
     if (avg == null) return;
-    dailyMap[key] = dailyMap[key] || {date: key};
+    dailyMap[key] = dailyMap[key] || { date: key };
     (dailyMap[key] as any)[field] = avg;
   });
 }
@@ -789,8 +956,8 @@ function bucketBPRecords(
   records: {
     startTime?: string;
     time?: string;
-    systolic: {inMillimetersOfMercury: number};
-    diastolic: {inMillimetersOfMercury: number};
+    systolic: { inMillimetersOfMercury: number };
+    diastolic: { inMillimetersOfMercury: number };
   }[],
   dailyMap: Record<string, DailyMetrics>,
 ) {
@@ -798,21 +965,37 @@ function bucketBPRecords(
     const ts = rec.startTime || (rec as any).time;
     if (!ts) return;
     const key = ts.slice(0, 10);
-    dailyMap[key] = dailyMap[key] || {date: key};
+    dailyMap[key] = dailyMap[key] || { date: key };
     dailyMap[key].bloodPressureSystolic = rec.systolic.inMillimetersOfMercury;
     dailyMap[key].bloodPressureDiastolic = rec.diastolic.inMillimetersOfMercury;
   });
 }
 
+async function averageInstantRecord<T extends AggregateResultRecordType>(
+  recordType: T,
+  timeRangeFilter: any,
+  getValue: (record: any) => number,
+): Promise<number | undefined> {
+  try {
+    const records = await safeReadRecords(recordType, timeRangeFilter);
+    if (!records || records.length === 0) return undefined;
+    const sum = records.reduce((acc, rec) => acc + getValue(rec), 0);
+    return sum / records.length;
+  } catch (err) {
+    console.log(`[health] Error averaging ${recordType}`, err);
+    return undefined;
+  }
+}
+
 function averageBP(
-  records: {systolic?: {inMillimetersOfMercury: number}; diastolic?: {inMillimetersOfMercury: number}}[],
+  records: any[],
   type: 'systolic' | 'diastolic',
 ) {
-  const vals = records
+  const values = records
     .map(r => r[type]?.inMillimetersOfMercury)
-    .filter(v => v != null) as number[];
-  if (vals.length === 0) return undefined;
-  return vals.reduce((a, b) => a + b, 0) / vals.length;
+    .filter(v => v !== undefined && v !== null);
+  if (values.length === 0) return undefined;
+  return values.reduce((a, b) => a + b, 0) / values.length;
 }
 function fillMissingDays(
   startIso: string,
