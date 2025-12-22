@@ -51,10 +51,20 @@ export type DailyMetrics = {
   calories?: number;
   distanceKm?: number;
   sleepMinutes?: number;
+   sleepAwakeMinutes?: number;
+   sleepRemMinutes?: number;
+   sleepCoreMinutes?: number;
+   sleepDeepMinutes?: number;
   activeMinutes?: number;
   weightKg?: number;
   bloodPressureSystolic?: number;
   bloodPressureDiastolic?: number;
+   minSystolic?: number;
+   maxSystolic?: number;
+   minDiastolic?: number;
+   maxDiastolic?: number;
+   minHeartRate?: number;
+   maxHeartRate?: number;
   bloodGlucoseMgPerDl?: number;
   bodyTemperatureC?: number;
   oxygenSaturationPercent?: number;
@@ -256,7 +266,12 @@ export async function syncVitalsRange(
     return syncHealthConnectRange(start, end);
   }
 
-  return syncAppleHealthRange(start, end);
+  // Determine if this is "today" (less than 24 hours)
+  const startMs = new Date(start).getTime();
+  const endMs = new Date(end).getTime();
+  const isToday = (endMs - startMs) < (24 * 60 * 60 * 1000);
+
+  return syncAppleHealthRange(start, end, isToday);
 }
 
 async function syncHealthConnect(): Promise<VitalMetrics> {
@@ -658,8 +673,13 @@ async function syncAppleHealth(): Promise<VitalMetrics> {
 async function syncAppleHealthRange(
   start: string,
   end: string,
+  useHourlyGranularity: boolean = false, // true for "today", false for week/month
 ): Promise<VitalsRangeResult> {
-  console.log('[health] HealthKit range aggregate start', { start, end });
+  console.log('[health] HealthKit range aggregate start', { start, end, useHourlyGranularity });
+
+  // Note: HealthKit's getDailyStepCountSamples returns DAILY aggregates, not hourly
+  // Even for "today", it will return a single data point for the entire day
+  // To get hourly data, we would need to fetch raw samples and group them manually
 
   const steps = await promisifyHealthArray(cb =>
     AppleHealthKit.getDailyStepCountSamples(
@@ -667,6 +687,8 @@ async function syncAppleHealthRange(
       cb,
     ),
   );
+
+  console.log('[health] Steps samples received:', steps.length, steps);
 
   const heartRates = await promisifyHealthArray(cb =>
     AppleHealthKit.getHeartRateSamples({ startDate: start, endDate: end }, cb),
@@ -698,7 +720,7 @@ async function syncAppleHealthRange(
     AppleHealthKit.getSleepSamples({ startDate: start, endDate: end }, cb),
   );
 
-  const exerciseTimes = await promisifyHealthArray(cb =>
+  const activeMinutes = await promisifyHealthArray(cb =>
     AppleHealthKit.getAppleExerciseTime(
       {
         startDate: start,
@@ -717,41 +739,50 @@ async function syncAppleHealthRange(
   );
 
   // Fetch additional vitals for the range
-  const bloodPressureSamples: any[] = await new Promise(resolve => {
-    AppleHealthKit.getBloodPressureSamples({ startDate: start, endDate: end }, (err: string, results: any) => {
-      if (err) {
-        resolve([]);
-        return;
-      }
-      resolve(results || []);
-    });
+  const bpSamples = await promisifyHealthArray(cb => {
+    AppleHealthKit.getBloodPressureSamples({ startDate: start, endDate: end }, cb);
   });
 
-  const bloodGlucoseSamples = await promisifyHealthArray(cb =>
+  const glucoseSamples = await promisifyHealthArray(cb =>
     AppleHealthKit.getBloodGlucoseSamples(
       { startDate: start, endDate: end, unit: 'mgPerdL' as any },
       cb,
     ),
   );
 
-  const bodyTempSamples = await promisifyHealthArray(cb =>
+  const tempSamples = await promisifyHealthArray(cb =>
     AppleHealthKit.getBodyTemperatureSamples(
       { startDate: start, endDate: end, unit: 'celsius' as any },
       cb,
     ),
   );
 
-  const oxygenSaturationSamples = await promisifyHealthArray(cb =>
+  const oxygenSamples = await promisifyHealthArray(cb =>
     AppleHealthKit.getOxygenSaturationSamples({ startDate: start, endDate: end }, cb),
   );
 
-  const respiratoryRateSamples = await promisifyHealthArray(cb =>
+  const respiratorySamples = await promisifyHealthArray(cb =>
     AppleHealthKit.getRespiratoryRateSamples({ startDate: start, endDate: end }, cb),
   );
 
   const dailyMap: Record<string, DailyMetrics> = {};
   const add = (key: string) => (dailyMap[key] = dailyMap[key] || { date: key });
-  const dateKey = (iso: string) => iso.slice(0, 10);
+
+  // Conditional grouping: hourly for "today", daily for week/month
+  const dateKey = (iso: string) => {
+    if (useHourlyGranularity) {
+      // Group by hour: "2025-12-18T16:00:00"
+      const d = new Date(iso);
+      const year = d.getFullYear();
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      const hour = String(d.getHours()).padStart(2, '0');
+      return `${year}-${month}-${day}T${hour}:00:00`;
+    } else {
+      // Group by day: "2025-12-18"
+      return iso.slice(0, 10);
+    }
+  };
 
   steps.forEach(s => {
     const key = dateKey(s.startDate);
@@ -765,9 +796,13 @@ async function syncAppleHealthRange(
     if (!entry.averageHeartRate) {
       entry.averageHeartRate = 0;
       (entry as any).hrCount = 0;
+      (entry as any).minHeartRate = hr.value;
+      (entry as any).maxHeartRate = hr.value;
     }
     entry.averageHeartRate = entry.averageHeartRate + (hr.value ?? 0);
     (entry as any).hrCount = ((entry as any).hrCount ?? 0) + 1;
+    (entry as any).minHeartRate = Math.min((entry as any).minHeartRate, hr.value);
+    (entry as any).maxHeartRate = Math.max((entry as any).maxHeartRate, hr.value);
   });
 
   calories.forEach(c => {
@@ -779,6 +814,7 @@ async function syncAppleHealthRange(
   distances.forEach(d => {
     const key = dateKey(d.startDate);
     const entry = add(key);
+    // distance is in meters, store as km
     entry.distanceKm = (entry.distanceKm ?? 0) + (d.value ?? 0) / 1000;
   });
 
@@ -787,47 +823,76 @@ async function syncAppleHealthRange(
     const entry = add(key);
     const startMs = new Date(s.startDate).getTime();
     const endMs = new Date(s.endDate).getTime();
-    entry.sleepMinutes =
-      (entry.sleepMinutes ?? 0) + Math.round((endMs - startMs) / 1000 / 60);
+    const minutes = Math.round((endMs - startMs) / 1000 / 60);
+    entry.sleepMinutes = (entry.sleepMinutes ?? 0) + minutes;
+    const stage = (s as any).value;
+    if (stage) {
+      const normalized = String(stage).toUpperCase();
+      if (normalized.includes('AWAKE')) {
+        entry.sleepAwakeMinutes = (entry.sleepAwakeMinutes ?? 0) + minutes;
+      } else if (normalized.includes('REM')) {
+        entry.sleepRemMinutes = (entry.sleepRemMinutes ?? 0) + minutes;
+      } else if (normalized.includes('CORE') || normalized.includes('ASLEEP') || normalized.includes('LIGHT')) {
+        entry.sleepCoreMinutes = (entry.sleepCoreMinutes ?? 0) + minutes;
+      } else if (normalized.includes('DEEP')) {
+        entry.sleepDeepMinutes = (entry.sleepDeepMinutes ?? 0) + minutes;
+      }
+    }
   });
 
-  exerciseTimes.forEach(e => {
+  activeMinutes.forEach((e: any) => {
     const key = dateKey(e.startDate);
     const entry = add(key);
     entry.activeMinutes = (entry.activeMinutes ?? 0) + (e.value ?? 0);
   });
 
   // Process blood pressure samples
-  bloodPressureSamples.forEach((bp: any) => {
+  bpSamples.forEach((bp: any) => {
     const key = dateKey(bp.startDate);
     const entry = add(key);
     entry.bloodPressureSystolic = bp.bloodPressureSystolicValue;
     entry.bloodPressureDiastolic = bp.bloodPressureDiastolicValue;
+
+    // Track Systolic range
+    entry.minSystolic = entry.minSystolic != null
+      ? Math.min(entry.minSystolic, bp.bloodPressureSystolicValue)
+      : bp.bloodPressureSystolicValue;
+    entry.maxSystolic = entry.maxSystolic != null
+      ? Math.max(entry.maxSystolic, bp.bloodPressureSystolicValue)
+      : bp.bloodPressureSystolicValue;
+
+    // Track Diastolic range
+    entry.minDiastolic = entry.minDiastolic != null
+      ? Math.min(entry.minDiastolic, bp.bloodPressureDiastolicValue)
+      : bp.bloodPressureDiastolicValue;
+    entry.maxDiastolic = entry.maxDiastolic != null
+      ? Math.max(entry.maxDiastolic, bp.bloodPressureDiastolicValue)
+      : bp.bloodPressureDiastolicValue;
   });
 
   // Process blood glucose samples
-  bloodGlucoseSamples.forEach(bg => {
+  glucoseSamples.forEach((bg: any) => {
     const key = dateKey(bg.startDate);
     const entry = add(key);
     entry.bloodGlucoseMgPerDl = bg.value;
   });
 
   // Process body temperature samples
-  bodyTempSamples.forEach(temp => {
+  tempSamples.forEach((temp: any) => {
     const key = dateKey(temp.startDate);
     const entry = add(key);
     entry.bodyTemperatureC = temp.value;
   });
 
   // Process oxygen saturation samples
-  oxygenSaturationSamples.forEach(oxy => {
+  oxygenSamples.forEach((oxy: any) => {
     const key = dateKey(oxy.startDate);
     const entry = add(key);
     entry.oxygenSaturationPercent = oxy.value;
   });
 
   // Process respiratory rate samples
-  respiratoryRateSamples.forEach(resp => {
+  respiratorySamples.forEach((resp: any) => {
     const key = dateKey(resp.startDate);
     const entry = add(key);
     entry.respiratoryRate = resp.value;
@@ -966,8 +1031,15 @@ function bucketBPRecords(
     if (!ts) return;
     const key = ts.slice(0, 10);
     dailyMap[key] = dailyMap[key] || { date: key };
-    dailyMap[key].bloodPressureSystolic = rec.systolic.inMillimetersOfMercury;
-    dailyMap[key].bloodPressureDiastolic = rec.diastolic.inMillimetersOfMercury;
+    const entry = dailyMap[key];
+    const sys = rec.systolic.inMillimetersOfMercury;
+    const dia = rec.diastolic.inMillimetersOfMercury;
+    entry.bloodPressureSystolic = sys;
+    entry.bloodPressureDiastolic = dia;
+    entry.minSystolic = entry.minSystolic != null ? Math.min(entry.minSystolic, sys) : sys;
+    entry.maxSystolic = entry.maxSystolic != null ? Math.max(entry.maxSystolic, sys) : sys;
+    entry.minDiastolic = entry.minDiastolic != null ? Math.min(entry.minDiastolic, dia) : dia;
+    entry.maxDiastolic = entry.maxDiastolic != null ? Math.max(entry.maxDiastolic, dia) : dia;
   });
 }
 

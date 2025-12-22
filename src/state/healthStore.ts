@@ -26,6 +26,16 @@ export type DailyRow = {
   bodyTemperatureC?: number;
   oxygenSaturationPercent?: number;
   respiratoryRate?: number;
+  minHeartRate?: number;
+  maxHeartRate?: number;
+  minSystolic?: number;
+  maxSystolic?: number;
+  minDiastolic?: number;
+  maxDiastolic?: number;
+  sleepAwakeMinutes?: number;
+  sleepRemMinutes?: number;
+  sleepCoreMinutes?: number;
+  sleepDeepMinutes?: number;
 };
 
 type HealthState = {
@@ -121,11 +131,21 @@ export const useHealthStore = create<HealthState>()(
               calories: d.calories,
               distanceKm: d.distanceKm,
               sleepMinutes: d.sleepMinutes,
+              sleepAwakeMinutes: d.sleepAwakeMinutes,
+              sleepRemMinutes: d.sleepRemMinutes,
+              sleepCoreMinutes: d.sleepCoreMinutes,
+              sleepDeepMinutes: d.sleepDeepMinutes,
               activeMinutes: d.activeMinutes,
               averageHeartRate: d.averageHeartRate,
+              minHeartRate: d.minHeartRate,
+              maxHeartRate: d.maxHeartRate,
               weightKg: d.weightKg,
               bloodPressureSystolic: d.bloodPressureSystolic,
               bloodPressureDiastolic: d.bloodPressureDiastolic,
+              minSystolic: d.minSystolic,
+              maxSystolic: d.maxSystolic,
+              minDiastolic: d.minDiastolic,
+              maxDiastolic: d.maxDiastolic,
               bloodGlucoseMgPerDl: d.bloodGlucoseMgPerDl,
               bodyTemperatureC: d.bodyTemperatureC,
               oxygenSaturationPercent: d.oxygenSaturationPercent,
