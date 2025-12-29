@@ -71,10 +71,29 @@ export type DailyMetrics = {
   respiratoryRate?: number;
 };
 
+export type HourlyMetric = {
+  date: string; // yyyy-mm-dd
+  hour: number; // 0-23
+  metricType: string;
+  value: number;
+  unit?: string;
+  source?: string;
+};
+
+export type SleepSession = {
+  startTime: string;
+  endTime: string;
+  stage?: string;
+  durationMinutes?: number;
+  source?: string;
+};
+
 export type VitalsRangeResult = {
   platform: SupportedPlatform;
   summary: VitalMetrics;
   daily: DailyMetrics[];
+  hourly?: HourlyMetric[];
+  sleepSessions?: SleepSession[];
 };
 
 const DAY_RANGE_HOURS = 24;
@@ -262,16 +281,13 @@ export async function syncVitalsRange(
   start: string,
   end: string,
 ): Promise<VitalsRangeResult> {
+  const useHourlyGranularity = true;
+
   if (Platform.OS === 'android') {
-    return syncHealthConnectRange(start, end);
+    return syncHealthConnectRange(start, end, useHourlyGranularity);
   }
 
-  // Determine if this is "today" (less than 24 hours)
-  const startMs = new Date(start).getTime();
-  const endMs = new Date(end).getTime();
-  const isToday = (endMs - startMs) < (24 * 60 * 60 * 1000);
-
-  return syncAppleHealthRange(start, end, isToday);
+  return syncAppleHealthRange(start, end, useHourlyGranularity);
 }
 
 async function syncHealthConnect(): Promise<VitalMetrics> {
@@ -342,6 +358,7 @@ async function syncHealthConnect(): Promise<VitalMetrics> {
 async function syncHealthConnectRange(
   start: string,
   end: string,
+  useHourlyGranularity: boolean,
 ): Promise<VitalsRangeResult> {
   const permissionResult = await ensureHealthConnectPermissions();
   if (!permissionResult.granted) {
@@ -357,6 +374,7 @@ async function syncHealthConnectRange(
 
   const timeRangeFilter = { startTime: start, endTime: end, operator: 'between' as const };
   const timeRangeSlicer = { duration: 'DAYS' as const, length: 1 };
+  const timeRangeSlicerHourly = { duration: 'HOURS' as const, length: 1 };
   console.log('[health] Health Connect range aggregate', timeRangeFilter);
 
   const [steps, heart, calories, distance, sleep, active] = await Promise.all([
@@ -417,6 +435,37 @@ async function syncHealthConnectRange(
       }),
     ]);
 
+  const [stepsByHour, heartByHour, caloriesByHour, distanceByHour, activeByHour] =
+    useHourlyGranularity
+      ? await Promise.all([
+        safeAggregateGroupByDuration({
+          recordType: 'Steps',
+          timeRangeFilter,
+          timeRangeSlicer: timeRangeSlicerHourly,
+        }),
+        safeAggregateGroupByDuration({
+          recordType: 'HeartRate',
+          timeRangeFilter,
+          timeRangeSlicer: timeRangeSlicerHourly,
+        }),
+        safeAggregateGroupByDuration({
+          recordType: 'TotalCaloriesBurned',
+          timeRangeFilter,
+          timeRangeSlicer: timeRangeSlicerHourly,
+        }),
+        safeAggregateGroupByDuration({
+          recordType: 'Distance',
+          timeRangeFilter,
+          timeRangeSlicer: timeRangeSlicerHourly,
+        }),
+        safeAggregateGroupByDuration({
+          recordType: 'ExerciseSession',
+          timeRangeFilter,
+          timeRangeSlicer: timeRangeSlicerHourly,
+        }),
+      ])
+      : [[], [], [], [], []];
+
   const dailyMap: Record<string, DailyMetrics> = {};
   const getKey = (iso: string) => iso.slice(0, 10);
 
@@ -475,6 +524,74 @@ async function syncHealthConnectRange(
 
   const daily = fillMissingDays(timeRangeFilter.startTime, timeRangeFilter.endTime, dailyMap);
 
+  const hourly: HourlyMetric[] = [];
+  const toDateHour = (iso: string) => {
+    const d = new Date(iso);
+    return { date: d.toISOString().slice(0, 10), hour: d.getHours() };
+  };
+
+  stepsByHour.forEach(bucket => {
+    const { date, hour } = toDateHour(bucket.startTime);
+    hourly.push({
+      date,
+      hour,
+      metricType: 'steps',
+      value: bucket.result.COUNT_TOTAL ?? 0,
+      unit: 'count',
+      source: 'health_connect',
+    });
+  });
+
+  heartByHour.forEach(bucket => {
+    const { date, hour } = toDateHour(bucket.startTime);
+    hourly.push({
+      date,
+      hour,
+      metricType: 'heart_rate',
+      value: bucket.result.BPM_AVG ?? 0,
+      unit: 'bpm',
+      source: 'health_connect',
+    });
+  });
+
+  caloriesByHour.forEach(bucket => {
+    const { date, hour } = toDateHour(bucket.startTime);
+    hourly.push({
+      date,
+      hour,
+      metricType: 'calories',
+      value: bucket.result.ENERGY_TOTAL?.inKilocalories ?? 0,
+      unit: 'kcal',
+      source: 'health_connect',
+    });
+  });
+
+  distanceByHour.forEach(bucket => {
+    const { date, hour } = toDateHour(bucket.startTime);
+    hourly.push({
+      date,
+      hour,
+      metricType: 'distance',
+      value: bucket.result.DISTANCE?.inKilometers ?? 0,
+      unit: 'km',
+      source: 'health_connect',
+    });
+  });
+
+  activeByHour.forEach(bucket => {
+    const { date, hour } = toDateHour(bucket.startTime);
+    hourly.push({
+      date,
+      hour,
+      metricType: 'active_minutes',
+      value: bucket.result.EXERCISE_DURATION_TOTAL?.inSeconds
+        ? Math.round(bucket.result.EXERCISE_DURATION_TOTAL.inSeconds / 60)
+        : 0,
+      unit: 'min',
+      source: 'health_connect',
+    });
+  });
+
   const summary: VitalMetrics = {
     platform: 'android',
     steps: steps?.COUNT_TOTAL ?? 0,
@@ -498,7 +615,7 @@ async function syncHealthConnectRange(
     respiratoryRate: averageFromDaily(daily, 'respiratoryRate') ?? 0,
   };
 
-  return { platform: 'android', summary, daily };
+  return { platform: 'android', summary, daily, hourly };
 }
 
 async function syncAppleHealth(): Promise<VitalMetrics> {
@@ -907,9 +1024,119 @@ async function syncAppleHealthRange(
     delete (entry as any).hrCount;
   });
 
-  const daily = Object.values(dailyMap).sort((a, b) =>
-    a.date.localeCompare(b.date),
-  );
+  let daily: DailyMetrics[] = [];
+  if (useHourlyGranularity) {
+    const dailyRollup: Record<string, DailyMetrics & { hrCount?: number }> = {};
+    Object.values(dailyMap).forEach(entry => {
+      const date = entry.date.slice(0, 10);
+      const target = dailyRollup[date] || { date };
+
+      target.steps = (target.steps ?? 0) + (entry.steps ?? 0);
+      target.calories = (target.calories ?? 0) + (entry.calories ?? 0);
+      target.distanceKm = (target.distanceKm ?? 0) + (entry.distanceKm ?? 0);
+      target.sleepMinutes = (target.sleepMinutes ?? 0) + (entry.sleepMinutes ?? 0);
+      target.sleepAwakeMinutes = (target.sleepAwakeMinutes ?? 0) + (entry.sleepAwakeMinutes ?? 0);
+      target.sleepRemMinutes = (target.sleepRemMinutes ?? 0) + (entry.sleepRemMinutes ?? 0);
+      target.sleepCoreMinutes = (target.sleepCoreMinutes ?? 0) + (entry.sleepCoreMinutes ?? 0);
+      target.sleepDeepMinutes = (target.sleepDeepMinutes ?? 0) + (entry.sleepDeepMinutes ?? 0);
+      target.activeMinutes = (target.activeMinutes ?? 0) + (entry.activeMinutes ?? 0);
+      target.weightKg = target.weightKg ?? entry.weightKg;
+
+      if (entry.averageHeartRate != null) {
+        target.averageHeartRate = (target.averageHeartRate ?? 0) + entry.averageHeartRate;
+        target.hrCount = (target.hrCount ?? 0) + 1;
+      }
+
+      if (entry.minHeartRate != null) {
+        target.minHeartRate = target.minHeartRate != null
+          ? Math.min(target.minHeartRate, entry.minHeartRate)
+          : entry.minHeartRate;
+      }
+      if (entry.maxHeartRate != null) {
+        target.maxHeartRate = target.maxHeartRate != null
+          ? Math.max(target.maxHeartRate, entry.maxHeartRate)
+          : entry.maxHeartRate;
+      }
+
+      target.bloodPressureSystolic = target.bloodPressureSystolic ?? entry.bloodPressureSystolic;
+      target.bloodPressureDiastolic = target.bloodPressureDiastolic ?? entry.bloodPressureDiastolic;
+      target.minSystolic = target.minSystolic ?? entry.minSystolic;
+      target.maxSystolic = target.maxSystolic ?? entry.maxSystolic;
+      target.minDiastolic = target.minDiastolic ?? entry.minDiastolic;
+      target.maxDiastolic = target.maxDiastolic ?? entry.maxDiastolic;
+
+      target.bloodGlucoseMgPerDl = target.bloodGlucoseMgPerDl ?? entry.bloodGlucoseMgPerDl;
+      target.bodyTemperatureC = target.bodyTemperatureC ?? entry.bodyTemperatureC;
+      target.oxygenSaturationPercent = target.oxygenSaturationPercent ?? entry.oxygenSaturationPercent;
+      target.respiratoryRate = target.respiratoryRate ?? entry.respiratoryRate;
+
+      dailyRollup[date] = target;
+    });
+
+    daily = Object.values(dailyRollup).map(entry => {
+      if (entry.hrCount && entry.averageHeartRate != null) {
+        entry.averageHeartRate = Math.round(entry.averageHeartRate / entry.hrCount);
+      }
+      delete (entry as any).hrCount;
+      return entry;
+    }).sort((a, b) => a.date.localeCompare(b.date));
+  } else {
+    daily = Object.values(dailyMap).sort((a, b) =>
+      a.date.localeCompare(b.date),
+    );
+  }
+
+  const hourly: HourlyMetric[] = [];
+  if (useHourlyGranularity) {
+    Object.values(dailyMap).forEach(entry => {
+      const hourDate = entry.date;
+      const date = hourDate.slice(0, 10);
+      const hour = Number(hourDate.slice(11, 13));
+      if (!Number.isInteger(hour)) return;
+
+      const pushIfNumber = (metricType: string, value?: number, unit?: string) => {
+        if (value == null) return;
+        hourly.push({
+          date,
+          hour,
+          metricType,
+          value,
+          unit,
+          source: 'apple_health',
+        });
+      };
+
+      pushIfNumber('steps', entry.steps, 'count');
+      pushIfNumber('heart_rate', entry.averageHeartRate, 'bpm');
+      pushIfNumber('calories', entry.calories, 'kcal');
+      pushIfNumber('distance', entry.distanceKm, 'km');
+      pushIfNumber('sleep_minutes', entry.sleepMinutes, 'min');
+      pushIfNumber('active_minutes', entry.activeMinutes, 'min');
+      pushIfNumber('bp_systolic', entry.bloodPressureSystolic, 'mmHg');
+      pushIfNumber('bp_diastolic', entry.bloodPressureDiastolic, 'mmHg');
+      pushIfNumber('blood_glucose', entry.bloodGlucoseMgPerDl, 'mg/dL');
+      pushIfNumber('body_temp', entry.bodyTemperatureC, 'C');
+      pushIfNumber('oxygen_sat', entry.oxygenSaturationPercent, '%');
+      pushIfNumber('respiratory_rate', entry.respiratoryRate, 'breaths/min');
+    });
+  }
+
+  const sleepSessions: SleepSession[] = sleeps.map((s: any) => {
+    const start = s.startDate;
+    const end = s.endDate;
+    const startMs = new Date(start).getTime();
+    const endMs = new Date(end).getTime();
+    const durationMinutes = Number.isFinite(startMs) && Number.isFinite(endMs)
+      ? Math.round((endMs - startMs) / 1000 / 60)
+      : undefined;
+    return {
+      startTime: start,
+      endTime: end,
+      stage: s.value ? String(s.value).toLowerCase() : undefined,
+      durationMinutes,
+      source: 'apple_health',
+    };
+  });
 
   // Convert weight from pounds to kg
   const weightInKg = weight?.value ? weight.value * 0.453592 : undefined;
@@ -934,7 +1161,7 @@ async function syncAppleHealthRange(
     { platform: 'ios' },
   );
 
-  return { platform: 'ios', summary, daily };
+  return { platform: 'ios', summary, daily, hourly, sleepSessions };
 }
 
 async function safeAggregateRecord<T extends AggregateResultRecordType>(
@@ -953,7 +1180,7 @@ async function safeAggregateGroupByDuration<T extends AggregateResultRecordType>
   request: {
     recordType: T;
     timeRangeFilter: TimeRangeFilter;
-    timeRangeSlicer: { duration: 'DAYS'; length: number };
+    timeRangeSlicer: { duration: 'DAYS' | 'HOURS'; length: number };
   },
 ): Promise<AggregationGroupResult<T>[]> {
   try {

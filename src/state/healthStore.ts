@@ -117,11 +117,16 @@ export const useHealthStore = create<HealthState>()(
             })),
           );
           enqueueSync({
+            patientProfileId: process.env.EXPO_PUBLIC_PATIENT_PROFILE_ID || undefined,
             deviceId: 'local-device',
             platform: result.platform,
             summary: result.summary,
             daily: result.daily,
-            syncedAt: new Date().toISOString(),
+            hourly: result.hourly,
+            sleepSessions: result.sleepSessions,
+            syncStartedAt: new Date().toISOString(),
+            syncCompletedAt: new Date().toISOString(),
+            status: 'success',
           });
           set({
             metrics: result.summary,

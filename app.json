@@ -7,7 +7,6 @@
     "icon": "./assets/icon.png",
     "scheme": "healthsyncexpo",
     "userInterfaceStyle": "light",
-    "newArchEnabled": false,
     "plugins": [
       "expo-health-connect",
       [

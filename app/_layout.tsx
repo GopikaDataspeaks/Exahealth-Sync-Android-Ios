@@ -9,6 +9,7 @@ export default function RootLayout() {
                 headerShown: false,
                 presentation: 'card', // Force card presentation to avoid sheet-related crashes
             }}>
+                <Stack.Screen name="login" />
                 <Stack.Screen name="(tabs)" />
                 <Stack.Screen name="vital/[metric]" />
             </Stack>
